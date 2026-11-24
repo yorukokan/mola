@@ -1,0 +1,14 @@
+MOLA · Kurulum
+
+1) Mola.xcodeproj dosyasına çift tıkla.
+2) Soldaki mavi "Mola" → TARGETS "Mola" → Signing & Capabilities → Team: kendi adın.
+3) Aynısını "MolaWidgets" için yap.
+4) iPhone'u bağla, ▶ bas. Eski Plaka uygulamasının yerine geçer, kayıtların kalır.
+5) Telefonda bildirim ve Canlı Etkinlik izinlerine "İzin Ver" de.
+6) Ayarlar sekmesi → Kontrol → "10 saniyelik deneme dinlenmesi" → telefonu kilitle.
+   10 sn sonra ekran yanmalı, zil çalmalı, titremeli.
+7) Widget: eski Plaka widget'larını kaldır, ana ekrana ve kilit ekranına "Mola" widget'ını ekle.
+
+Hata çıkarsa: Xcode'da sol üstteki üçgen ünlem simgesinin (Issue navigator) fotoğrafını Claude'a at.
+Bundle ID hatası çıkarsa: Mola projesi → Build Settings → User-Defined → BUNDLE_ID ve APP_GROUP
+sonuna aynı eki ekle (ör. ...app2). Bu durumda eski kayıtlar yerine başlangıç kayıtları gelir.
