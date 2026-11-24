@@ -77,9 +77,19 @@ final class WorkoutEngine: ObservableObject {
     // MARK: - Okumalar
 
     var active: Workout? { data.active }
+    var routines: [RoutineDef] { data.routines }
+    var hasCustomRoutines: Bool { data.customRoutines != nil }
     var finishedHistory: [Workout] { Planner.finished(data.history) }
-    var nextRoutine: RoutineDef { Planner.nextRoutine(history: data.history) }
+    var nextRoutine: RoutineDef { Planner.nextRoutine(history: data.history, routines: routines) }
     var isForeground: Bool { UIApplication.shared.applicationState == .active }
+
+    func routine(_ id: String) -> RoutineDef? {
+        routines.first { $0.id == id }
+    }
+
+    func exerciseDef(in w: Workout, at ei: Int) -> ExerciseDef? {
+        Planner.def(w, ei, routines: routines)
+    }
 
     var rest: RestInfo? {
         if let w = data.active, let s = w.restStart, let e = w.restEnd {
@@ -112,7 +122,7 @@ final class WorkoutEngine: ObservableObject {
             return
         }
         endTest()
-        let w = Planner.makeWorkout(routine, history: data.history)
+        let w = Planner.makeWorkout(routine, history: data.history, cardioDefaults: data.settings.cardioDefaults)
         data.active = w
         lastCompleted = nil
         restEndedAt = nil
@@ -160,7 +170,7 @@ final class WorkoutEngine: ObservableObject {
         // Top set kilosu değişince, henüz yapılmamış tüm back-off setlerini %90'a çek
         if kg != nil,
            w.exercises[ref.ex].sets[ref.set].kind == .top,
-           let def = Planner.def(w, ref.ex) {
+           let def = exerciseDef(in: w, at: ref.ex) {
             let top = w.exercises[ref.ex].sets[ref.set].kg
             let backoffKg = roundTo(top * 0.9, step: def.step)
             for bi in w.exercises[ref.ex].sets.indices
@@ -174,7 +184,85 @@ final class WorkoutEngine: ObservableObject {
 
     func step(for ref: SetRef) -> Double {
         guard let w = data.active else { return 2.5 }
-        return Planner.def(w, ref.ex)?.step ?? 2.5
+        return exerciseDef(in: w, at: ref.ex)?.step ?? 2.5
+    }
+
+    /// Aktif antrenmandaki tamamlanmış veya açık herhangi bir seti düzenler
+    func updateSet(_ ref: SetRef, kg: Double, reps: Int) {
+        setValue(ref, kg: kg, reps: reps)
+        saveNow()
+        reloadWidgets()
+    }
+
+    /// Tamamlanmış ya da atlanmış bir seti tekrar açık hale getirir
+    func reopenSet(_ ref: SetRef) {
+        guard var w = data.active,
+              w.exercises.indices.contains(ref.ex),
+              w.exercises[ref.ex].sets.indices.contains(ref.set) else { return }
+        w.exercises[ref.ex].sets[ref.set].done = false
+        w.exercises[ref.ex].sets[ref.set].doneAt = nil
+        w.exercises[ref.ex].sets[ref.set].skipped = nil
+        w.focus = ref.ex
+        data.active = w
+        saveNow()
+        pushLive()
+        reloadWidgets()
+    }
+
+    /// Aktif harekete ekstra bir çalışma (back-off) seti ekler
+    func addExtraSet(toExercise ei: Int) {
+        guard var w = data.active, w.exercises.indices.contains(ei) else { return }
+        let ex = w.exercises[ei]
+        let def = exerciseDef(in: w, at: ei)
+        let refSet = ex.sets.last(where: { $0.kind != .warmup }) ?? ex.sets.last
+        let kg = refSet?.kg ?? 0
+        let reps = refSet?.reps ?? (def?.kind.backoffRange.lowerBound ?? 10)
+        w.exercises[ei].sets.append(SetEntry(kind: .backoff, kg: kg, reps: reps))
+        w.focus = ei
+        data.active = w
+        Feedback.tap()
+        saveNow()
+        pushLive()
+        reloadWidgets()
+    }
+
+    /// Ekstra eklenen bir seti siler (en az 1 çalışma seti kalmasını garanti eder)
+    func removeSet(_ ref: SetRef) {
+        guard var w = data.active,
+              w.exercises.indices.contains(ref.ex),
+              w.exercises[ref.ex].sets.indices.contains(ref.set) else { return }
+        let target = w.exercises[ref.ex].sets[ref.set]
+        if target.kind != .warmup && w.exercises[ref.ex].workSets <= 1 { return }
+        w.exercises[ref.ex].sets.remove(at: ref.set)
+        data.active = w
+        saveNow()
+        pushLive()
+        reloadWidgets()
+    }
+
+    /// Geçmiş bir antrenmandaki setin kilo/tekrar değerini düzeltir
+    func updateHistorySet(workoutId: UUID, exerciseId: String, setId: UUID, kg: Double, reps: Int) {
+        guard let wi = data.history.firstIndex(where: { $0.id == workoutId }),
+              let ei = data.history[wi].exercises.firstIndex(where: { $0.id == exerciseId }),
+              let si = data.history[wi].exercises[ei].sets.firstIndex(where: { $0.id == setId }) else { return }
+        data.history[wi].exercises[ei].sets[si].kg = max(0, kg)
+        data.history[wi].exercises[ei].sets[si].reps = max(0, min(50, reps))
+        saveNow()
+        reloadWidgets()
+    }
+
+    // MARK: - Program düzenleme
+
+    func saveRoutines(_ updated: [RoutineDef]) {
+        data.customRoutines = updated
+        saveNow()
+        reloadWidgets()
+    }
+
+    func resetRoutinesToDefault() {
+        data.customRoutines = nil
+        saveNow()
+        reloadWidgets()
     }
 
     // MARK: - Ana akış: seti bitir → dinlen → sıradaki set
@@ -194,7 +282,7 @@ final class WorkoutEngine: ObservableObject {
         Feedback.setDone()
 
         if Planner.cursor(in: w) != nil {
-            let seconds = kind == .warmup ? 60 : (Planner.def(w, c.ex)?.rest ?? 90)
+            let seconds = kind == .warmup ? 60 : (exerciseDef(in: w, at: c.ex)?.rest ?? 90)
             startRest(seconds: seconds, cardio: false)
         } else {
             // Bütün setler bitti: sırada kardiyo
@@ -416,6 +504,17 @@ final class WorkoutEngine: ObservableObject {
         w.cardio.resistance = resistance
         w.cardio.done = false
         data.active = w
+        // Bir sonraki antrenman için en son kardiyo ayarını hatırla
+        data.settings.cardioDefaults.kind = kind
+        switch kind {
+        case .treadmill:
+            data.settings.cardioDefaults.treadmillMinutes = minutes
+            data.settings.cardioDefaults.incline = incline
+            data.settings.cardioDefaults.speed = speed
+        case .bike:
+            data.settings.cardioDefaults.bikeMinutes = minutes
+            data.settings.cardioDefaults.resistance = resistance
+        }
         startRest(seconds: minutes * 60, cardio: true)
     }
 
@@ -585,8 +684,82 @@ final class WorkoutEngine: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
+    // MARK: - Özet metni (Yapay zeka takibi için) ve JSON Yedek
+
+    enum ExportRange: CaseIterable {
+        case week
+        case month
+        case all
+
+        var title: String {
+            switch self {
+            case .week: return "Son 7 gün"
+            case .month: return "Son 30 gün"
+            case .all: return "Tüm geçmiş"
+            }
+        }
+    }
+
+    func workouts(in range: ExportRange, now: Date = Date()) -> [Workout] {
+        let all = finishedHistory
+        switch range {
+        case .all:
+            return all
+        case .week:
+            let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: now) ?? now
+            return all.filter { ($0.finishedAt ?? $0.startedAt) >= cutoff }
+        case .month:
+            let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: now) ?? now
+            return all.filter { ($0.finishedAt ?? $0.startedAt) >= cutoff }
+        }
+    }
+
+    func exportText(range: ExportRange) -> String {
+        let list = workouts(in: range).reversed()
+        guard !list.isEmpty else {
+            return "MOLA · \(range.title) · Kayıt yok"
+        }
+        let header = "MOLA · \(range.title) (\(list.count) antrenman)"
+        let body = list.map(exportText).joined(separator: "\n\n")
+        return "\(header)\n\n\(body)"
+    }
+
     func exportAll() -> String {
-        finishedHistory.reversed().map(exportText).joined(separator: "\n\n")
+        exportText(range: .all)
+    }
+
+    func backupData() -> Data? {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try? encoder.encode(data)
+    }
+
+    enum BackupError: LocalizedError {
+        case invalidFormat
+        var errorDescription: String? {
+            "Seçilen dosya geçerli bir Mola yedeği değil."
+        }
+    }
+
+    /// JSON yedeğini doğrular ve mevcut verilerin yerine geri yükler
+    func restoreBackup(from raw: Data) throws -> Int {
+        guard var decoded = try? SharedStore.decoder.decode(AppData.self, from: raw) else {
+            throw BackupError.invalidFormat
+        }
+        decoded.seeded = true
+        stopTicker()
+        Notifier.cancelRest()
+        LiveActivityManager.shared.endAll()
+        AudioEngine.shared.stopKeepAlive()
+        showWorkout = false
+        lastCompleted = nil
+        restEndedAt = nil
+        data = decoded
+        saveNow()
+        applyIdleTimer()
+        reloadWidgets()
+        return Planner.finished(decoded.history).count
     }
 
     /// Bu antrenmanda geçen sefere göre artan top setler

@@ -144,10 +144,11 @@ struct SetScreen: View {
     }
     @State private var editing: Field?
     @State private var entryText = ""
+    @State private var editingSetIndex: Int?
 
     private var exercise: ExerciseEntry { workout.exercises[ref.ex] }
     private var entry: SetEntry { exercise.sets[ref.set] }
-    private var def: ExerciseDef? { Planner.def(workout, ref.ex) }
+    private var def: ExerciseDef? { engine.exerciseDef(in: workout, at: ref.ex) }
     private var step: Double { def?.step ?? 2.5 }
     private var plate: Plate { workout.plate }
     private var range: ClosedRange<Int>? {
@@ -165,7 +166,19 @@ struct SetScreen: View {
         VStack(alignment: .leading, spacing: 0) {
             header
                 .padding(.top, 18)
-            SetPills(exercise: exercise, current: ref.set, plate: plate)
+            SetPills(exercise: exercise,
+                     current: ref.set,
+                     plate: plate,
+                     onSelect: { idx in
+                         guard idx != ref.set else { return }
+                         Feedback.tap()
+                         editingSetIndex = idx
+                     },
+                     onAddSet: {
+                         withAnimation(.snappy) {
+                             engine.addExtraSet(toExercise: ref.ex)
+                         }
+                     })
                 .padding(.top, 14)
             Spacer(minLength: 12)
             target
@@ -179,6 +192,30 @@ struct SetScreen: View {
             Button("Tamam") { applyEntry() }
             Button("Vazgeç", role: .cancel) {}
         }
+        .sheet(isPresented: editSetSheetBinding) {
+            if let si = editingSetIndex, exercise.sets.indices.contains(si) {
+                ActiveSetEditSheet(
+                    exerciseName: exercise.name,
+                    set: exercise.sets[si],
+                    step: step,
+                    canDelete: exercise.sets[si].kind == .backoff && exercise.workSets > 1,
+                    onSave: { kg, reps in
+                        engine.updateSet(SetRef(ex: ref.ex, set: si), kg: kg, reps: reps)
+                    },
+                    onReopen: {
+                        engine.reopenSet(SetRef(ex: ref.ex, set: si))
+                    },
+                    onDelete: {
+                        engine.removeSet(SetRef(ex: ref.ex, set: si))
+                    }
+                )
+                .presentationDetents([.medium])
+            }
+        }
+    }
+
+    private var editSetSheetBinding: Binding<Bool> {
+        Binding(get: { editingSetIndex != nil }, set: { if !$0 { editingSetIndex = nil } })
     }
 
     private var alertTitle: String {
@@ -290,11 +327,13 @@ struct SetScreen: View {
     }
 }
 
-/// Bu hareketin setleri: yapılanlar dolu, sıradaki çerçeveli
+/// Bu hareketin setleri: yapılanlar dolu (dokununca düzenlenir), sıradaki çerçeveli, sonda + Set
 struct SetPills: View {
     var exercise: ExerciseEntry
     var current: Int
     var plate: Plate
+    var onSelect: (Int) -> Void
+    var onAddSet: () -> Void
 
     private var hasMultipleBackoffs: Bool {
         exercise.sets.filter { $0.kind == .backoff }.count > 1
@@ -311,9 +350,29 @@ struct SetPills: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(Array(exercise.sets.enumerated()), id: \.offset) { i, s in
-                pill(s, title: label(for: i, s), isCurrent: i == current)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(Array(exercise.sets.enumerated()), id: \.offset) { i, s in
+                    Button {
+                        onSelect(i)
+                    } label: {
+                        pill(s, title: label(for: i, s), isCurrent: i == current)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button(action: onAddSet) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
+                        Text("Set").font(.system(size: 12, weight: .bold))
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 32)
+                    .foregroundStyle(Ink.secondary)
+                    .background(Ink.surface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Ink.line, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Ekstra set ekle")
             }
         }
     }
@@ -330,6 +389,75 @@ struct SetPills: View {
         .background(s.done ? plate.color : Ink.surface, in: Capsule())
         .overlay(Capsule().strokeBorder(isCurrent ? plate.color : Ink.line, lineWidth: isCurrent ? 2 : 0.5))
         .opacity(s.skipped == true ? 0.5 : 1)
+    }
+}
+
+struct ActiveSetEditSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let exerciseName: String
+    let set: SetEntry
+    let step: Double
+    let canDelete: Bool
+    let onSave: (Double, Int) -> Void
+    let onReopen: () -> Void
+    let onDelete: () -> Void
+
+    @State private var kgText: String = ""
+    @State private var reps: Int = 8
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("\(exerciseName) · \(set.kind.title)") {
+                    HStack {
+                        Text("Kilo (kg)")
+                        Spacer()
+                        TextField("0", text: $kgText)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .font(PFont.number(18, weight: .bold))
+                            .frame(width: 100)
+                    }
+                    Stepper("Tekrar: \(reps)", value: $reps, in: 0...50)
+                }
+
+                if set.done || set.skipped == true {
+                    Section {
+                        Button("Seti tekrar aç") {
+                            onReopen()
+                            dismiss()
+                        }
+                    }
+                }
+
+                if canDelete {
+                    Section {
+                        Button("Bu seti sil", role: .destructive) {
+                            onDelete()
+                            dismiss()
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Seti düzenle")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Vazgeç") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Kaydet") {
+                        let kg = parseNumber(kgText) ?? set.kg
+                        onSave(kg, reps)
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                kgText = Fmt.kg(set.kg)
+                reps = set.reps
+            }
+        }
     }
 }
 
@@ -403,7 +531,7 @@ struct NextSetCard: View {
     var body: some View {
         let ex = workout.exercises[ref.ex]
         let entry = ex.sets[ref.set]
-        let step = Planner.def(workout, ref.ex)?.step ?? 2.5
+        let step = engine.exerciseDef(in: workout, at: ref.ex)?.step ?? 2.5
         VStack(alignment: .leading, spacing: 10) {
             Eyebrow(text: "Sıradaki")
             HStack(alignment: .firstTextBaseline) {
@@ -434,11 +562,16 @@ struct CardioScreen: View {
     var onFinish: () -> Void
 
     @State private var kind: CardioKind = .treadmill
-    @State private var minutes = 15
+    @State private var treadmillMinutes = 15
     @State private var incline = 12.0
     @State private var speed = 4.2
+    @State private var bikeMinutes = 15
     @State private var resistance = 8
     @State private var loaded = false
+
+    private var activeMinutes: Int {
+        kind == .treadmill ? treadmillMinutes : bikeMinutes
+    }
 
     private var subtitle: String {
         if workout.cardio.done {
@@ -471,9 +604,21 @@ struct CardioScreen: View {
                 VStack(spacing: 14) {
                     cardioKindPicker
                     VStack(spacing: 12) {
-                        cardioRow("Süre", value: "\(minutes) dk",
-                                  minus: { minutes = max(5, minutes - 1) },
-                                  plus: { minutes = min(60, minutes + 1) })
+                        cardioRow("Süre", value: "\(activeMinutes) dk",
+                                  minus: {
+                                      if kind == .treadmill {
+                                          treadmillMinutes = max(5, treadmillMinutes - 1)
+                                      } else {
+                                          bikeMinutes = max(5, bikeMinutes - 1)
+                                      }
+                                  },
+                                  plus: {
+                                      if kind == .treadmill {
+                                          treadmillMinutes = min(60, treadmillMinutes + 1)
+                                      } else {
+                                          bikeMinutes = min(60, bikeMinutes + 1)
+                                      }
+                                  })
                         if kind == .treadmill {
                             cardioRow("Eğim", value: "%\(Fmt.kg(incline))",
                                       minus: { incline = max(0, incline - 1) },
@@ -502,7 +647,7 @@ struct CardioScreen: View {
                 .buttonStyle(BigButtonStyle(color: workout.plate.color, foreground: workout.plate.onColor, height: 70))
             } else {
                 Button {
-                    engine.startCardio(kind: kind, minutes: minutes, incline: incline, speed: speed, resistance: resistance)
+                    engine.startCardio(kind: kind, minutes: activeMinutes, incline: incline, speed: speed, resistance: resistance)
                 } label: {
                     Label("Kardiyoyu başlat", systemImage: kind.icon)
                 }
@@ -519,11 +664,13 @@ struct CardioScreen: View {
         .onAppear {
             guard !loaded else { return }
             loaded = true
-            kind = workout.cardio.kind
-            minutes = workout.cardio.minutes > 0 ? workout.cardio.minutes : 15
-            incline = workout.cardio.incline
-            speed = workout.cardio.speed
-            resistance = workout.cardio.resistance
+            let defaults = engine.data.settings.cardioDefaults
+            kind = defaults.kind
+            treadmillMinutes = max(5, defaults.treadmillMinutes)
+            incline = defaults.incline
+            speed = defaults.speed
+            bikeMinutes = max(5, defaults.bikeMinutes)
+            resistance = defaults.resistance
         }
     }
 

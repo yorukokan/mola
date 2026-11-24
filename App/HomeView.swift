@@ -6,7 +6,7 @@ struct HomeView: View {
     @State private var picked: String?
 
     private var routine: RoutineDef {
-        if let id = picked, let r = Program.routine(id) { return r }
+        if let id = picked, let r = engine.routine(id) { return r }
         return engine.nextRoutine
     }
 
@@ -47,9 +47,11 @@ struct HomeView: View {
                 .fontWidth(.expanded)
                 .foregroundStyle(Ink.primary)
             Spacer()
-            Text(Fmt.longDay.string(from: Date()))
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Ink.secondary)
+            TimelineView(.periodic(from: .now, by: 60)) { ctx in
+                Text(Fmt.longDay.string(from: ctx.date))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Ink.secondary)
+            }
         }
         .padding(.top, 6)
     }
@@ -57,7 +59,7 @@ struct HomeView: View {
     /// Dört rutin, tek satır. Seçili olan büyük kartta görünür.
     private var routinePicker: some View {
         HStack(spacing: 8) {
-            ForEach(Program.routines) { r in
+            ForEach(engine.routines) { r in
                 let selected = r.id == routine.id
                 Button {
                     Feedback.tap()

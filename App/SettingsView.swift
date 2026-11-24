@@ -1,18 +1,58 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 import UserNotifications
+
+struct MolaBackupDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    var data: Data
+
+    init(data: Data) {
+        self.data = data
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        self.data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
 
 struct SettingsView: View {
     @EnvironmentObject var engine: WorkoutEngine
     @Environment(\.openURL) private var openURL
-    @State private var copiedAll = false
+    @State private var copiedRange: WorkoutEngine.ExportRange?
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
     @State private var panelEnabled = true
     @State private var panelError: String?
 
+    @State private var showExporter = false
+    @State private var exportDoc = MolaBackupDocument(data: Data())
+    @State private var showImporter = false
+    @State private var pendingRestoreData: Data?
+    @State private var pendingRestoreCount = 0
+    @State private var confirmRestore = false
+    @State private var backupMessage: String?
+
+    private var backupFilename: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return "mola-yedek-\(f.string(from: Date()))"
+    }
+
     var body: some View {
         NavigationStack {
             Form {
+                Section("Program") {
+                    NavigationLink {
+                        ProgramEditorView()
+                    } label: {
+                        Label("Programı düzenle", systemImage: "list.bullet.rectangle")
+                    }
+                }
+
                 Section {
                     Toggle("Zil sesi", isOn: $engine.data.settings.sound)
                     Toggle("Son 3 saniye tıkları", isOn: $engine.data.settings.countdownTicks)
@@ -70,18 +110,52 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Button(copiedAll ? "Kopyalandı" : "Tüm geçmişi kopyala") {
-                        UIPasteboard.general.string = engine.exportAll()
-                        copiedAll = true
+                    ForEach(WorkoutEngine.ExportRange.allCases, id: \.self) { range in
+                        let count = engine.workouts(in: range).count
+                        Button {
+                            UIPasteboard.general.string = engine.exportText(range: range)
+                            Feedback.tap()
+                            copiedRange = range
+                        } label: {
+                            HStack {
+                                Label(copiedRange == range ? "Kopyalandı" : "\(range.title) özetini kopyala",
+                                      systemImage: copiedRange == range ? "checkmark" : "doc.on.doc")
+                                Spacer()
+                                Text("\(count)")
+                                    .font(PFont.number(14, weight: .semibold))
+                                    .foregroundStyle(Ink.secondary)
+                            }
+                        }
                     }
                 } header: {
-                    Text("Kayıtlar")
+                    Text("Yapay zeka için özet")
                 } footer: {
-                    Text("Kayıtlar sadece bu telefonda saklanır. Claude'a göndermek için kopyalayıp sohbete yapıştır.")
+                    Text("Haftalık, aylık ya da tüm antrenman özetini kopyalayıp yapay zekaya yapıştırabilirsin.")
+                }
+
+                Section {
+                    Button {
+                        if let raw = engine.backupData() {
+                            exportDoc = MolaBackupDocument(data: raw)
+                            showExporter = true
+                        }
+                    } label: {
+                        Label("JSON yedeğini kaydet", systemImage: "square.and.arrow.up")
+                    }
+
+                    Button {
+                        showImporter = true
+                    } label: {
+                        Label("Yedekten geri yükle", systemImage: "square.and.arrow.down")
+                    }
+                } header: {
+                    Text("Yedekleme")
+                } footer: {
+                    Text("Kayıtlar sadece bu telefonda saklanır. Dosyalar veya iCloud Drive'a yedekleyip istediğin zaman geri yükleyebilirsin.")
                 }
 
                 Section("Hakkında") {
-                    LabeledContent("Program", value: "4 gün Upper / Lower")
+                    LabeledContent("Program", value: engine.hasCustomRoutines ? "Özel 4 gün Upper / Lower" : "4 gün Upper / Lower")
                     LabeledContent("Sürüm", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0")
                 }
             }
@@ -94,6 +168,56 @@ struct SettingsView: View {
             }
             .onChange(of: engine.data.settings.keepAwake) { _, _ in
                 engine.applyIdleTimer()
+            }
+            .fileExporter(isPresented: $showExporter,
+                          document: exportDoc,
+                          contentType: .json,
+                          defaultFilename: backupFilename) { result in
+                switch result {
+                case .success:
+                    backupMessage = "Yedek dosyası kaydedildi."
+                case .failure(let err):
+                    backupMessage = "Yedek kaydedilemedi: \(err.localizedDescription)"
+                }
+            }
+            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
+                switch result {
+                case .success(let url):
+                    let access = url.startAccessingSecurityScopedResource()
+                    defer { if access { url.stopAccessingSecurityScopedResource() } }
+                    guard let raw = try? Data(contentsOf: url),
+                          let decoded = try? SharedStore.decoder.decode(AppData.self, from: raw) else {
+                        backupMessage = "Seçilen dosya geçerli bir Mola yedeği değil."
+                        return
+                    }
+                    pendingRestoreData = raw
+                    pendingRestoreCount = Planner.finished(decoded.history).count
+                    confirmRestore = true
+                case .failure(let err):
+                    backupMessage = "Dosya açılamadı: \(err.localizedDescription)"
+                }
+            }
+            .confirmationDialog("Yedekten geri yüklensin mi?", isPresented: $confirmRestore, titleVisibility: .visible) {
+                Button("Geri yükle (\(pendingRestoreCount) antrenman)", role: .destructive) {
+                    guard let raw = pendingRestoreData else { return }
+                    do {
+                        let count = try engine.restoreBackup(from: raw)
+                        backupMessage = "\(count) antrenman kaydı geri yüklendi."
+                    } catch {
+                        backupMessage = error.localizedDescription
+                    }
+                    pendingRestoreData = nil
+                }
+                Button("Vazgeç", role: .cancel) {
+                    pendingRestoreData = nil
+                }
+            } message: {
+                Text("Mevcut kayıtların yerine yedekteki \(pendingRestoreCount) antrenman ve program ayarları yüklenecek.")
+            }
+            .alert("Yedekleme", isPresented: Binding(get: { backupMessage != nil }, set: { if !$0 { backupMessage = nil } })) {
+                Button("Tamam", role: .cancel) {}
+            } message: {
+                Text(backupMessage ?? "")
             }
         }
     }

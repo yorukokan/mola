@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0BC5A2A74492813DACFC0106 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6B3016F92D46D1CC3FB1C398 /* SwiftUI.framework */; };
 		0FB900020D99F1D3E966E6A8 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F5DB5F8838C26FA67FB4AF5 /* SettingsView.swift */; };
+		A1B2C3D4E5F60718293A4B5C /* ProgramEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C4B5A69788796A5B4C /* ProgramEditorView.swift */; };
 		1278904B5DD21430E2769A36 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF1E47E156ECC948BB63F51 /* HomeView.swift */; };
 		1E911CDADDEB39C764E4420B /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C559A120A9A738466483C84C /* HistoryView.swift */; };
 		1F398001AA37F8E52F3CCFE2 /* Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7DC93E1F6090B390A4E4BE0 /* Palette.swift */; };
@@ -92,6 +93,7 @@
 		D833B8FDFB33E281D55F5EA9 /* MolaWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MolaWidgets.entitlements; sourceTree = "<group>"; };
 		E3EC8399D4A5168B7C143EB8 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
 		EE5DD97144F17C8D2ECC2FBC /* SummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryView.swift; sourceTree = "<group>"; };
+		F1E2D3C4B5A69788796A5B4C /* ProgramEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramEditorView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -177,6 +179,7 @@
 				0AF1E47E156ECC948BB63F51 /* HomeView.swift */,
 				B352307FFC896018B2CCD19D /* LiveActivity.swift */,
 				36F5BF88D4756EABC3FB022B /* MolaApp.swift */,
+				F1E2D3C4B5A69788796A5B4C /* ProgramEditorView.swift */,
 				9F5DB5F8838C26FA67FB4AF5 /* SettingsView.swift */,
 				EE5DD97144F17C8D2ECC2FBC /* SummaryView.swift */,
 				6DFAC071F9A27C7DC9C832FD /* WorkoutView.swift */,
@@ -295,6 +298,7 @@
 				1278904B5DD21430E2769A36 /* HomeView.swift in Sources */,
 				C535930AE788A6AD4211FBA4 /* LiveActivity.swift in Sources */,
 				30B311364EABC21F49E3FAB6 /* MolaApp.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5C /* ProgramEditorView.swift in Sources */,
 				0FB900020D99F1D3E966E6A8 /* SettingsView.swift in Sources */,
 				5E3BF24BCDADB0B820643FBA /* SummaryView.swift in Sources */,
 				6796D0ED70393A5F7BAD464E /* WorkoutView.swift in Sources */,

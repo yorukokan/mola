@@ -54,8 +54,8 @@ enum Planner {
     }
 
     /// Sırayla: Üst A → Alt A → Üst B → Alt B
-    static func nextRoutine(history: [Workout]) -> RoutineDef {
-        let all = Program.routines
+    static func nextRoutine(history: [Workout], routines: [RoutineDef] = Program.routines) -> RoutineDef {
+        let all = routines.isEmpty ? Program.routines : routines
         guard let last = finished(history).first,
               let idx = all.firstIndex(where: { $0.id == last.routineId }) else { return all[0] }
         return all[(idx + 1) % all.count]
@@ -68,7 +68,9 @@ enum Planner {
         return total / same.count
     }
 
-    static func makeWorkout(_ routine: RoutineDef, history: [Workout]) -> Workout {
+    static func makeWorkout(_ routine: RoutineDef,
+                            history: [Workout],
+                            cardioDefaults: CardioDefaults = CardioDefaults()) -> Workout {
         let exercises: [ExerciseEntry] = routine.exercises.map { def in
             let s = suggestion(for: def, history: history)
             let top = s.kg
@@ -82,13 +84,24 @@ enum Planner {
             }
             return ExerciseEntry(id: def.id, name: def.name, liftKey: def.liftKey, sets: sets)
         }
+        let cardio = CardioEntry(
+            kind: cardioDefaults.kind,
+            minutes: cardioDefaults.kind == .treadmill ? cardioDefaults.treadmillMinutes : cardioDefaults.bikeMinutes,
+            incline: cardioDefaults.incline,
+            speed: cardioDefaults.speed,
+            resistance: cardioDefaults.resistance,
+            done: false
+        )
         return Workout(routineId: routine.id, routineName: routine.name, plate: routine.plate,
-                       startedAt: Date(), exercises: exercises)
+                       startedAt: Date(), exercises: exercises, cardio: cardio)
     }
 
-    static func def(_ w: Workout, _ ei: Int) -> ExerciseDef? {
+    static func def(_ w: Workout, _ ei: Int, routines: [RoutineDef] = Program.routines) -> ExerciseDef? {
         guard w.exercises.indices.contains(ei) else { return nil }
         let id = w.exercises[ei].id
+        if let found = routines.first(where: { $0.id == w.routineId })?.exercises.first(where: { $0.id == id }) {
+            return found
+        }
         return Program.routine(w.routineId)?.exercises.first { $0.id == id }
     }
 

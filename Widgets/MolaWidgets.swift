@@ -58,7 +58,7 @@ struct MolaProvider: TimelineProvider {
 
     private func makeEntry(data: AppData, now: Date) -> MolaEntry {
         let history = data.seeded ? data.history : Program.seedHistory + data.history
-        let routine = Planner.nextRoutine(history: history)
+        let routine = Planner.nextRoutine(history: history, routines: data.routines)
         let rows = Planner.targets(for: routine, history: history).map {
             TargetRow(name: $0.name, target: $0.target, up: $0.up)
         }

@@ -3,10 +3,26 @@ import ActivityKit
 
 // MARK: - Program tanımı
 
-enum ExerciseKind: String, Codable {
+enum ExerciseKind: String, Codable, CaseIterable {
     case main   // ağır bileşik hareket: ısınma + top 6-8 + back-off 8-10
     case iso    // izolasyon: top 10-12 + back-off 10-12
-    case face   // face pull: 12-15
+    case face   // arka omuz / yüksek tekrar: 12-15
+
+    var title: String {
+        switch self {
+        case .main: return "Ana bileşik (ısınmalı)"
+        case .iso: return "İzolasyon"
+        case .face: return "Yüksek tekrar (12–15)"
+        }
+    }
+
+    var repSummary: String {
+        switch self {
+        case .main: return "6–8 / 8–10 tekrar"
+        case .iso: return "10–12 tekrar"
+        case .face: return "12–15 tekrar"
+        }
+    }
 
     var topRange: ClosedRange<Int> {
         switch self {
@@ -38,6 +54,38 @@ struct ExerciseDef: Codable, Identifiable, Hashable {
     var note: String? = nil
     /// Back-off set sayısı (varsayılan 1 → toplam 2 çalışma seti; 2 → toplam 3 çalışma seti)
     var backoffSets: Int = 1
+
+    var workSetCount: Int { 1 + max(1, backoffSets) }
+
+    init(id: String,
+         name: String,
+         kind: ExerciseKind,
+         rest: Int,
+         step: Double,
+         liftKey: String,
+         note: String? = nil,
+         backoffSets: Int = 1) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.rest = rest
+        self.step = step
+        self.liftKey = liftKey
+        self.note = note
+        self.backoffSets = backoffSets
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        kind = try c.decode(ExerciseKind.self, forKey: .kind)
+        rest = try c.decode(Int.self, forKey: .rest)
+        step = try c.decode(Double.self, forKey: .step)
+        liftKey = try c.decode(String.self, forKey: .liftKey)
+        note = try c.decodeIfPresent(String.self, forKey: .note)
+        backoffSets = try c.decodeIfPresent(Int.self, forKey: .backoffSets) ?? 1
+    }
 }
 
 struct RoutineDef: Codable, Identifiable, Hashable {
@@ -217,6 +265,27 @@ enum Appearance: String, Codable, CaseIterable {
     }
 }
 
+struct CardioDefaults: Codable, Hashable {
+    var kind: CardioKind = .treadmill
+    var treadmillMinutes: Int = 15
+    var incline: Double = 12
+    var speed: Double = 4.2
+    var bikeMinutes: Int = 15
+    var resistance: Int = 8
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decodeIfPresent(CardioKind.self, forKey: .kind) ?? .treadmill
+        treadmillMinutes = try c.decodeIfPresent(Int.self, forKey: .treadmillMinutes) ?? 15
+        incline = try c.decodeIfPresent(Double.self, forKey: .incline) ?? 12
+        speed = try c.decodeIfPresent(Double.self, forKey: .speed) ?? 4.2
+        bikeMinutes = try c.decodeIfPresent(Int.self, forKey: .bikeMinutes) ?? 15
+        resistance = try c.decodeIfPresent(Int.self, forKey: .resistance) ?? 8
+    }
+}
+
 struct AppSettings: Codable, Hashable {
     var sound = true
     var haptics = true
@@ -225,6 +294,8 @@ struct AppSettings: Codable, Hashable {
     var appearance: Appearance = .light
     /// Antrenman boyunca uygulamayı arka planda canlı tutar (müzik durmaz)
     var backgroundTimer = true
+    /// En son kullanılan koşu bandı ve bisiklet ayarları
+    var cardioDefaults = CardioDefaults()
 
     init() {}
 
@@ -237,6 +308,7 @@ struct AppSettings: Codable, Hashable {
         keepAwake = try c.decodeIfPresent(Bool.self, forKey: .keepAwake) ?? true
         appearance = try c.decodeIfPresent(Appearance.self, forKey: .appearance) ?? .light
         backgroundTimer = try c.decodeIfPresent(Bool.self, forKey: .backgroundTimer) ?? true
+        cardioDefaults = (try? c.decodeIfPresent(CardioDefaults.self, forKey: .cardioDefaults)) ?? CardioDefaults()
     }
 }
 
@@ -245,6 +317,10 @@ struct AppData: Codable {
     var active: Workout? = nil
     var settings = AppSettings()
     var seeded = false
+    /// Kullanıcı uygulama içinden programı özelleştirdiyse burada saklanır
+    var customRoutines: [RoutineDef]? = nil
+
+    var routines: [RoutineDef] { customRoutines ?? Program.routines }
 
     init() {}
 
@@ -254,6 +330,7 @@ struct AppData: Codable {
         active = try? c.decodeIfPresent(Workout.self, forKey: .active)
         settings = (try? c.decodeIfPresent(AppSettings.self, forKey: .settings)) ?? AppSettings()
         seeded = try c.decodeIfPresent(Bool.self, forKey: .seeded) ?? false
+        customRoutines = try? c.decodeIfPresent([RoutineDef].self, forKey: .customRoutines)
     }
 }
 

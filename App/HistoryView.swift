@@ -4,6 +4,7 @@ import UIKit
 
 struct HistoryView: View {
     @EnvironmentObject var engine: WorkoutEngine
+    @State private var copiedLabel: String?
 
     var body: some View {
         NavigationStack {
@@ -48,6 +49,28 @@ struct HistoryView: View {
             .scrollContentBackground(.hidden)
             .background(Ink.canvas.ignoresSafeArea())
             .navigationTitle("Geçmiş")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        ForEach(WorkoutEngine.ExportRange.allCases, id: \.self) { range in
+                            let count = engine.workouts(in: range).count
+                            Button {
+                                UIPasteboard.general.string = engine.exportText(range: range)
+                                Feedback.tap()
+                                copiedLabel = range.title
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                    if copiedLabel == range.title { copiedLabel = nil }
+                                }
+                            } label: {
+                                Label("\(range.title) (\(count))", systemImage: "doc.on.doc")
+                            }
+                        }
+                    } label: {
+                        Label(copiedLabel == nil ? "Kopyala" : "Kopyalandı",
+                              systemImage: copiedLabel == nil ? "doc.on.doc" : "checkmark")
+                    }
+                }
+            }
         }
     }
 }
@@ -56,52 +79,129 @@ struct WorkoutDetailView: View {
     @EnvironmentObject var engine: WorkoutEngine
     var workout: Workout
     @State private var copied = false
+    @State private var editingTarget: EditableSet?
+
+    private struct EditableSet: Identifiable {
+        var id: UUID { entry.id }
+        var exerciseId: String
+        var exerciseName: String
+        var entry: SetEntry
+    }
+
+    private var currentWorkout: Workout {
+        engine.data.history.first(where: { $0.id == workout.id }) ?? workout
+    }
+
+    private var completedExercises: [ExerciseEntry] {
+        currentWorkout.exercises.filter { !$0.sets.filter(\.done).isEmpty }
+    }
 
     var body: some View {
+        let w = currentWorkout
         List {
             Section {
                 HStack(spacing: 16) {
-                    PlateDot(plate: workout.plate, size: 44)
+                    PlateDot(plate: w.plate, size: 44)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(Fmt.full.string(from: workout.finishedAt ?? workout.startedAt))
+                        Text(Fmt.full.string(from: w.finishedAt ?? w.startedAt))
                             .font(.system(size: 15, weight: .semibold))
-                        Text("\(workout.minutes) dk · \(workout.doneSetCount) set")
+                        Text("\(w.minutes) dk · \(w.doneSetCount) set")
                             .font(.system(size: 13))
                             .foregroundStyle(Ink.secondary)
                     }
                 }
             }
-            ForEach(workout.exercises) { ex in
+            ForEach(completedExercises) { ex in
                 Section(ex.name) {
                     ForEach(ex.sets.filter(\.done)) { s in
-                        HStack {
-                            Text(s.kind.title)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(s.kind == .warmup ? Ink.secondary : Ink.primary)
-                            Spacer()
-                            Text("\(Fmt.kg(s.kg)) kg × \(s.reps)")
-                                .font(PFont.number(16))
+                        Button {
+                            editingTarget = EditableSet(exerciseId: ex.id, exerciseName: ex.name, entry: s)
+                        } label: {
+                            HStack {
+                                Text(s.kind.title)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(s.kind == .warmup ? Ink.secondary : Ink.primary)
+                                Spacer()
+                                Text("\(Fmt.kg(s.kg)) kg × \(s.reps)")
+                                    .font(PFont.number(16))
+                                    .foregroundStyle(Ink.primary)
+                            }
                         }
                     }
                 }
             }
             Section("Kardiyo") {
-                Text(workout.cardio.done ? workout.cardio.summaryText : "Kaydedilmedi")
-                    .foregroundStyle(workout.cardio.done ? Ink.primary : Ink.secondary)
+                Text(w.cardio.done ? w.cardio.summaryText : "Kaydedilmedi")
+                    .foregroundStyle(w.cardio.done ? Ink.primary : Ink.secondary)
             }
             Section {
                 Button {
-                    UIPasteboard.general.string = engine.exportText(workout)
+                    UIPasteboard.general.string = engine.exportText(w)
                     copied = true
                 } label: {
-                    Label(copied ? "Kopyalandı" : "Claude için özeti kopyala", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    Label(copied ? "Kopyalandı" : "AI için özeti kopyala", systemImage: copied ? "checkmark" : "doc.on.doc")
                 }
+            } footer: {
+                Text("Yanlış girilmiş bir seti düzeltmek için satıra dokun.")
             }
         }
         .scrollContentBackground(.hidden)
         .background(Ink.canvas.ignoresSafeArea())
-        .navigationTitle(workout.routineName)
+        .navigationTitle(w.routineName)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $editingTarget) { item in
+            HistorySetEditSheet(exerciseName: item.exerciseName, set: item.entry) { kg, reps in
+                engine.updateHistorySet(workoutId: w.id, exerciseId: item.exerciseId, setId: item.entry.id, kg: kg, reps: reps)
+            }
+            .presentationDetents([.medium])
+        }
+    }
+}
+
+private struct HistorySetEditSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let exerciseName: String
+    let set: SetEntry
+    let onSave: (Double, Int) -> Void
+
+    @State private var kgText = ""
+    @State private var reps = 8
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("\(exerciseName) · \(set.kind.title)") {
+                    HStack {
+                        Text("Kilo (kg)")
+                        Spacer()
+                        TextField("0", text: $kgText)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .font(PFont.number(18, weight: .bold))
+                            .frame(width: 100)
+                    }
+                    Stepper("Tekrar: \(reps)", value: $reps, in: 0...50)
+                }
+            }
+            .navigationTitle("Seti düzelt")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Vazgeç") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Kaydet") {
+                        let kg = parseNumber(kgText) ?? set.kg
+                        onSave(kg, reps)
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                kgText = Fmt.kg(set.kg)
+                reps = set.reps
+            }
+        }
     }
 }
 
@@ -119,7 +219,7 @@ struct LiftProgressView: View {
     private var lifts: [Lift] {
         var seen = Set<String>()
         var out: [Lift] = []
-        for r in Program.routines {
+        for r in engine.routines {
             for e in r.exercises where seen.insert(e.liftKey).inserted {
                 out.append(Lift(key: e.liftKey, name: e.name))
             }
