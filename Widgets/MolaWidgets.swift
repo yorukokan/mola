@@ -668,7 +668,7 @@ struct LockScreenPanel: View {
                 Text(s.phase == .cardio ? s.setTitle : "Sıradaki")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
-                Text(s.phase == .cardio ? "Eğimli yürüyüş" : s.exercise)
+                Text(s.exercise)
                     .font(.system(size: 14, weight: .bold))
                     .lineLimit(1)
                 Text(s.target)

@@ -296,20 +296,33 @@ struct SetPills: View {
     var current: Int
     var plate: Plate
 
+    private var hasMultipleBackoffs: Bool {
+        exercise.sets.filter { $0.kind == .backoff }.count > 1
+    }
+
+    private func label(for index: Int, _ s: SetEntry) -> String {
+        if s.done { return "\(Fmt.kg(s.kg))×\(s.reps)" }
+        if s.skipped == true { return "atlandı" }
+        if s.kind == .backoff && hasMultipleBackoffs {
+            let n = exercise.sets[0...index].filter { $0.kind == .backoff }.count
+            return "Back-off \(n)"
+        }
+        return s.kind.title
+    }
+
     var body: some View {
         HStack(spacing: 6) {
             ForEach(Array(exercise.sets.enumerated()), id: \.offset) { i, s in
-                pill(s, isCurrent: i == current)
+                pill(s, title: label(for: i, s), isCurrent: i == current)
             }
         }
     }
 
     @ViewBuilder
-    private func pill(_ s: SetEntry, isCurrent: Bool) -> some View {
-        let text: String = s.done ? "\(Fmt.kg(s.kg))×\(s.reps)" : (s.skipped == true ? "atlandı" : s.kind.title)
+    private func pill(_ s: SetEntry, title: String, isCurrent: Bool) -> some View {
         HStack(spacing: 4) {
             if s.done { Image(systemName: "checkmark").font(.system(size: 10, weight: .heavy)) }
-            Text(text).font(.system(size: 13, weight: .bold)).lineLimit(1)
+            Text(title).font(.system(size: 13, weight: .bold)).lineLimit(1)
         }
         .padding(.horizontal, 12)
         .frame(height: 32)
@@ -420,9 +433,24 @@ struct CardioScreen: View {
     var workout: Workout
     var onFinish: () -> Void
 
+    @State private var kind: CardioKind = .treadmill
     @State private var minutes = 15
     @State private var incline = 12.0
     @State private var speed = 4.2
+    @State private var resistance = 8
+    @State private var loaded = false
+
+    private var subtitle: String {
+        if workout.cardio.done {
+            return "\(workout.doneSetCount) set ve \(workout.cardio.summaryText). Kaydedip bitirebilirsin."
+        }
+        switch kind {
+        case .treadmill:
+            return "Koşu bandında eğimli yürüyüş. Tutunma, tempoyu koru."
+        case .bike:
+            return "Kondisyon bisikleti. Sabit tempoyla sür."
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -431,9 +459,7 @@ struct CardioScreen: View {
                 Text(workout.cardio.done ? "Eline sağlık" : "Kardiyo")
                     .font(.system(size: 40, weight: .heavy))
                     .fontWidth(.expanded)
-                Text(workout.cardio.done
-                     ? "\(workout.doneSetCount) set ve \(workout.cardio.minutes) dk kardiyo. Kaydedip bitirebilirsin."
-                     : "Koşu bandında eğimli yürüyüş. Tutunma, tempoyu koru.")
+                Text(subtitle)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Ink.secondary)
             }
@@ -442,16 +468,27 @@ struct CardioScreen: View {
             Spacer(minLength: 16)
 
             if !workout.cardio.done {
-                VStack(spacing: 12) {
-                    cardioRow("Süre", value: "\(minutes) dk",
-                              minus: { minutes = max(5, minutes - 5) }, plus: { minutes = min(40, minutes + 5) })
-                    cardioRow("Eğim", value: "%\(Fmt.kg(incline))",
-                              minus: { incline = max(0, incline - 1) }, plus: { incline = min(15, incline + 1) })
-                    cardioRow("Hız", value: "\(Fmt.kg(speed)) km/s",
-                              minus: { speed = max(2, (speed * 10 - 1).rounded() / 10) },
-                              plus: { speed = min(7, (speed * 10 + 1).rounded() / 10) })
+                VStack(spacing: 14) {
+                    cardioKindPicker
+                    VStack(spacing: 12) {
+                        cardioRow("Süre", value: "\(minutes) dk",
+                                  minus: { minutes = max(5, minutes - 1) },
+                                  plus: { minutes = min(60, minutes + 1) })
+                        if kind == .treadmill {
+                            cardioRow("Eğim", value: "%\(Fmt.kg(incline))",
+                                      minus: { incline = max(0, incline - 1) },
+                                      plus: { incline = min(20, incline + 1) })
+                            cardioRow("Hız", value: "\(Fmt.kg(speed)) km/s",
+                                      minus: { speed = max(2, (speed * 10 - 1).rounded() / 10) },
+                                      plus: { speed = min(12, (speed * 10 + 1).rounded() / 10) })
+                        } else {
+                            cardioRow("Seviye", value: "\(resistance)",
+                                      minus: { resistance = max(1, resistance - 1) },
+                                      plus: { resistance = min(25, resistance + 1) })
+                        }
+                    }
+                    .card(padding: 16)
                 }
-                .card(padding: 16)
             }
 
             Spacer(minLength: 16)
@@ -465,9 +502,9 @@ struct CardioScreen: View {
                 .buttonStyle(BigButtonStyle(color: workout.plate.color, foreground: workout.plate.onColor, height: 70))
             } else {
                 Button {
-                    engine.startCardio(minutes: minutes, incline: incline, speed: speed)
+                    engine.startCardio(kind: kind, minutes: minutes, incline: incline, speed: speed, resistance: resistance)
                 } label: {
-                    Label("Kardiyoyu başlat", systemImage: "figure.walk")
+                    Label("Kardiyoyu başlat", systemImage: kind.icon)
                 }
                 .buttonStyle(BigButtonStyle(color: workout.plate.color, foreground: workout.plate.onColor, height: 70))
                 Button("Kardiyo yapmadan bitir", action: onFinish)
@@ -480,25 +517,65 @@ struct CardioScreen: View {
         .padding(.horizontal, 20)
         .padding(.bottom, 8)
         .onAppear {
+            guard !loaded else { return }
+            loaded = true
+            kind = workout.cardio.kind
             minutes = workout.cardio.minutes > 0 ? workout.cardio.minutes : 15
             incline = workout.cardio.incline
             speed = workout.cardio.speed
+            resistance = workout.cardio.resistance
+        }
+    }
+
+    private var cardioKindPicker: some View {
+        HStack(spacing: 8) {
+            ForEach(CardioKind.allCases, id: \.self) { option in
+                let selected = kind == option
+                Button {
+                    Feedback.tap()
+                    withAnimation(.snappy(duration: 0.2)) { kind = option }
+                } label: {
+                    Label(option.title, systemImage: option.icon)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(selected ? workout.plate.onColor : Ink.primary)
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .background(selected ? workout.plate.color : Ink.surface,
+                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(Ink.line, lineWidth: selected ? 0 : 0.5))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
     private func cardioRow(_ title: String, value: String, minus: @escaping () -> Void, plus: @escaping () -> Void) -> some View {
-        HStack {
+        HStack(spacing: 8) {
             Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(Ink.secondary)
             Spacer()
             Button { Feedback.tap(); minus() } label: {
-                Image(systemName: "minus").frame(width: 40, height: 40)
+                Image(systemName: "minus")
+                    .font(.system(size: 16, weight: .bold))
+                    .frame(width: 44, height: 44)
+                    .background(Ink.surface2, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            Text(value).font(PFont.number(20, weight: .heavy)).frame(minWidth: 96)
+            .buttonRepeatBehavior(.enabled)
+            Text(value)
+                .font(PFont.number(20, weight: .heavy))
+                .frame(minWidth: 96)
+                .multilineTextAlignment(.center)
             Button { Feedback.tap(); plus() } label: {
-                Image(systemName: "plus").frame(width: 40, height: 40)
+                Image(systemName: "plus")
+                    .font(.system(size: 16, weight: .bold))
+                    .frame(width: 44, height: 44)
+                    .background(Ink.surface2, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .buttonRepeatBehavior(.enabled)
         }
         .foregroundStyle(Ink.primary)
     }
@@ -512,7 +589,7 @@ struct CardioRunningScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 10)
-            Eyebrow(text: "Kardiyo", color: workout.plate.color)
+            Eyebrow(text: workout.cardio.kind.title, color: workout.plate.color)
             TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
                 let left = max(0, rest.end.timeIntervalSince(ctx.date))
                 ZStack {
@@ -520,7 +597,7 @@ struct CardioRunningScreen: View {
                     VStack(spacing: 2) {
                         Text(Fmt.clock(Int(left.rounded(.up))))
                             .font(PFont.number(70, weight: .heavy))
-                        Text("%\(Fmt.kg(workout.cardio.incline)) · \(Fmt.kg(workout.cardio.speed)) km/s")
+                        Text(workout.cardio.detailText)
                             .font(PFont.number(15, weight: .semibold))
                             .foregroundStyle(Ink.secondary)
                     }

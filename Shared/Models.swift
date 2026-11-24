@@ -36,6 +36,8 @@ struct ExerciseDef: Codable, Identifiable, Hashable {
     /// Aynı hareketin farklı günlerdeki kayıtlarını birleştirmek için (ör. leg curl)
     var liftKey: String
     var note: String? = nil
+    /// Back-off set sayısı (varsayılan 1 → toplam 2 çalışma seti; 2 → toplam 3 çalışma seti)
+    var backoffSets: Int = 1
 }
 
 struct RoutineDef: Codable, Identifiable, Hashable {
@@ -93,11 +95,81 @@ struct ExerciseEntry: Codable, Identifiable, Hashable {
     var workSets: Int { sets.filter { $0.kind != .warmup }.count }
 }
 
+enum CardioKind: String, Codable, CaseIterable, Hashable {
+    case treadmill
+    case bike
+
+    var title: String {
+        switch self {
+        case .treadmill: return "Koşu bandı"
+        case .bike: return "Bisiklet"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .treadmill: return "figure.walk"
+        case .bike: return "bicycle"
+        }
+    }
+
+    var shortActivity: String {
+        switch self {
+        case .treadmill: return "Eğimli yürüyüş"
+        case .bike: return "Kondisyon bisikleti"
+        }
+    }
+}
+
 struct CardioEntry: Codable, Hashable {
+    var kind: CardioKind = .treadmill
     var minutes: Int = 15
     var incline: Double = 12
     var speed: Double = 4.2
+    var resistance: Int = 8
     var done: Bool = false
+
+    init(kind: CardioKind = .treadmill,
+         minutes: Int = 15,
+         incline: Double = 12,
+         speed: Double = 4.2,
+         resistance: Int = 8,
+         done: Bool = false) {
+        self.kind = kind
+        self.minutes = minutes
+        self.incline = incline
+        self.speed = speed
+        self.resistance = resistance
+        self.done = done
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decodeIfPresent(CardioKind.self, forKey: .kind) ?? .treadmill
+        minutes = try c.decodeIfPresent(Int.self, forKey: .minutes) ?? 15
+        incline = try c.decodeIfPresent(Double.self, forKey: .incline) ?? 12
+        speed = try c.decodeIfPresent(Double.self, forKey: .speed) ?? 4.2
+        resistance = try c.decodeIfPresent(Int.self, forKey: .resistance) ?? 8
+        done = try c.decodeIfPresent(Bool.self, forKey: .done) ?? false
+    }
+
+    var detailText: String {
+        switch kind {
+        case .treadmill:
+            return "%\(Fmt.kg(incline)) · \(Fmt.kg(speed)) km/s"
+        case .bike:
+            return "Seviye \(resistance)"
+        }
+    }
+
+    var summaryText: String {
+        switch kind {
+        case .treadmill:
+            return "\(minutes) dk · %\(Fmt.kg(incline)) eğim · \(Fmt.kg(speed)) km/s"
+        case .bike:
+            return "Bisiklet · \(minutes) dk · Seviye \(resistance)"
+        }
+    }
 }
 
 struct Workout: Codable, Identifiable, Hashable {

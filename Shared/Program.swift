@@ -7,7 +7,7 @@ enum Program {
         RoutineDef(id: "ustA", name: "Üst A", dayLabel: "Pzt", plate: .red, exercises: [
             ExerciseDef(id: "chest", name: "Chest Press", kind: .main, rest: 150, step: 2.5, liftKey: "chest"),
             ExerciseDef(id: "lat", name: "Lat Pulldown", kind: .main, rest: 150, step: 2.5, liftKey: "lat"),
-            ExerciseDef(id: "mrow", name: "Machine Row", kind: .main, rest: 150, step: 2.5, liftKey: "mrow"),
+            ExerciseDef(id: "mrow", name: "Machine Row (dar tutuş)", kind: .main, rest: 150, step: 2.5, liftKey: "mrow", note: "Dar tutuş · kanat"),
             ExerciseDef(id: "pec", name: "Pec Deck Fly", kind: .iso, rest: 90, step: 2.5, liftKey: "pec"),
             ExerciseDef(id: "latraise-a", name: "Lateral Raise", kind: .iso, rest: 90, step: 2.5, liftKey: "latraise"),
             ExerciseDef(id: "pushdown-a", name: "Triceps Pushdown", kind: .iso, rest: 90, step: 2.5, liftKey: "pushdown"),
@@ -24,13 +24,11 @@ enum Program {
         ]),
         RoutineDef(id: "ustB", name: "Üst B", dayLabel: "Per", plate: .yellow, exercises: [
             ExerciseDef(id: "incline", name: "Incline Chest Press", kind: .main, rest: 150, step: 2.5, liftKey: "incline"),
-            ExerciseDef(id: "row", name: "Seated Cable Row", kind: .main, rest: 150, step: 5, liftKey: "row"),
+            ExerciseDef(id: "mrow-wide", name: "Machine Row (geniş tutuş)", kind: .main, rest: 150, step: 2.5, liftKey: "mrow-wide", note: "Geniş tutuş · üst sırt"),
             ExerciseDef(id: "shoulder", name: "Shoulder Press", kind: .main, rest: 150, step: 2.5, liftKey: "shoulder"),
             ExerciseDef(id: "latnarrow", name: "Lat Pulldown (dar)", kind: .main, rest: 120, step: 5, liftKey: "latnarrow"),
-            ExerciseDef(id: "facepull", name: "Face Pull", kind: .face, rest: 90, step: 2.5, liftKey: "facepull", note: "Dirsekler yüksek, sonda 1 sn tut"),
-            ExerciseDef(id: "latraise-b", name: "Lateral Raise", kind: .iso, rest: 90, step: 2.5, liftKey: "latraise"),
-            ExerciseDef(id: "pushdown-b", name: "Triceps Pushdown", kind: .iso, rest: 90, step: 2.5, liftKey: "pushdown"),
-            ExerciseDef(id: "cablecurl", name: "Cable Biceps Curl", kind: .iso, rest: 90, step: 2.5, liftKey: "cablecurl"),
+            ExerciseDef(id: "singletriceps", name: "Tek Kol Kablo Triceps", kind: .iso, rest: 90, step: 2.5, liftKey: "singletriceps", note: "Tek kol kilosu"),
+            ExerciseDef(id: "inclinecurl-b", name: "Incline Dambıl Curl", kind: .iso, rest: 90, step: 1, liftKey: "inclinecurl", note: "Tek kol kilosu"),
             ExerciseDef(id: "hammer", name: "Hammer Curl", kind: .iso, rest: 90, step: 1, liftKey: "hammer", note: "Süre uzarsa atla"),
         ]),
         RoutineDef(id: "altB", name: "Alt B", dayLabel: "Cum", plate: .green, exercises: [
@@ -39,6 +37,8 @@ enum Program {
             ExerciseDef(id: "legext-b", name: "Leg Extension", kind: .iso, rest: 90, step: 5, liftKey: "legext"),
             ExerciseDef(id: "calf-b", name: "Calf Raise (leg press)", kind: .iso, rest: 90, step: 5, liftKey: "calf-press"),
             ExerciseDef(id: "crunch-b", name: "Abdominal Crunch", kind: .iso, rest: 90, step: 2.5, liftKey: "crunch"),
+            ExerciseDef(id: "latraise-b", name: "Lateral Raise", kind: .iso, rest: 90, step: 2.5, liftKey: "latraise"),
+            ExerciseDef(id: "revpec", name: "Reverse Pec Deck Fly", kind: .face, rest: 90, step: 2.5, liftKey: "revpec", note: "Arka omuz · kontrollü açış", backoffSets: 2),
         ]),
     ]
 
@@ -83,13 +83,8 @@ enum Program {
             ]),
             w("ustB", 1793891741, 1793895964, [
                 ("incline", [(.warmup, 15, 10), (.top, 25, 9), (.backoff, 25, 8)]),
-                ("row", [(.warmup, 50, 6), (.top, 70, 8), (.backoff, 70, 8)]),
                 ("shoulder", [(.warmup, 10, 10), (.top, 20, 8), (.backoff, 20, 8)]),
                 ("latnarrow", [(.warmup, 30, 10), (.top, 60, 8), (.backoff, 60, 8)]),
-                ("facepull", [(.top, 27, 12), (.backoff, 27, 12)]),
-                ("latraise-b", [(.top, 20, 12), (.backoff, 20, 11)]),
-                ("pushdown-b", [(.top, 45, 9), (.backoff, 40, 9)]),
-                ("cablecurl", [(.top, 41, 8), (.backoff, 30, 8)]),
                 ("hammer", [(.top, 10, 10), (.backoff, 8, 8)]),
             ]),
             w("altB", 1793978245, 1793981210, [
@@ -98,6 +93,7 @@ enum Program {
                 ("legext-b", [(.top, 60, 8), (.backoff, 60, 8)]),
                 ("calf-b", [(.top, 113, 12), (.backoff, 113, 12)]),
                 ("crunch-b", [(.top, 56, 9), (.backoff, 56, 9)]),
+                ("latraise-b", [(.top, 20, 12), (.backoff, 20, 11)]),
             ]),
             w("ustA", 1794237065, 1794241222, [
                 ("chest", [(.warmup, 20, 8), (.top, 60, 7), (.backoff, 60, 7)]),

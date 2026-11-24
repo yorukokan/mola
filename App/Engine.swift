@@ -157,13 +157,16 @@ final class WorkoutEngine: ObservableObject {
         if let kg { w.exercises[ref.ex].sets[ref.set].kg = max(0, kg) }
         if let reps { w.exercises[ref.ex].sets[ref.set].reps = max(0, min(50, reps)) }
 
-        // Top set kilosu değişince, henüz yapılmadıysa back-off'u da %90'a çek
+        // Top set kilosu değişince, henüz yapılmamış tüm back-off setlerini %90'a çek
         if kg != nil,
            w.exercises[ref.ex].sets[ref.set].kind == .top,
-           let def = Planner.def(w, ref.ex),
-           let bi = w.exercises[ref.ex].sets.firstIndex(where: { $0.kind == .backoff && $0.isOpen }) {
+           let def = Planner.def(w, ref.ex) {
             let top = w.exercises[ref.ex].sets[ref.set].kg
-            w.exercises[ref.ex].sets[bi].kg = roundTo(top * 0.9, step: def.step)
+            let backoffKg = roundTo(top * 0.9, step: def.step)
+            for bi in w.exercises[ref.ex].sets.indices
+                where w.exercises[ref.ex].sets[bi].kind == .backoff && w.exercises[ref.ex].sets[bi].isOpen {
+                w.exercises[ref.ex].sets[bi].kg = backoffKg
+            }
         }
         data.active = w
         pushLive()
@@ -404,11 +407,13 @@ final class WorkoutEngine: ObservableObject {
 
     // MARK: - Kardiyo ve bitiş
 
-    func startCardio(minutes: Int, incline: Double, speed: Double) {
+    func startCardio(kind: CardioKind, minutes: Int, incline: Double, speed: Double, resistance: Int) {
         guard var w = data.active else { return }
+        w.cardio.kind = kind
         w.cardio.minutes = minutes
         w.cardio.incline = incline
         w.cardio.speed = speed
+        w.cardio.resistance = resistance
         w.cardio.done = false
         data.active = w
         startRest(seconds: minutes * 60, cardio: true)
@@ -573,7 +578,7 @@ final class WorkoutEngine: ObservableObject {
             lines.append("\(ex.name): " + parts.joined(separator: " | "))
         }
         if w.cardio.done {
-            lines.append("Kardiyo: \(w.cardio.minutes) dk · %\(Fmt.kg(w.cardio.incline)) eğim · \(Fmt.kg(w.cardio.speed)) km/s")
+            lines.append("Kardiyo: \(w.cardio.summaryText)")
         } else {
             lines.append("Kardiyo: yapılmadı")
         }

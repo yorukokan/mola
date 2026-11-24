@@ -57,9 +57,7 @@ struct SummaryView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Eyebrow(text: "Kardiyo")
-                    Text(workout.cardio.done
-                         ? "\(workout.cardio.minutes) dk · %\(Fmt.kg(workout.cardio.incline)) eğim · \(Fmt.kg(workout.cardio.speed)) km/s"
-                         : "Yapılmadı")
+                    Text(workout.cardio.done ? workout.cardio.summaryText : "Yapılmadı")
                         .font(.system(size: 16, weight: .semibold))
                 }
                 .card()

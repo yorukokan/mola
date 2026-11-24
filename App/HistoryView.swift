@@ -86,9 +86,7 @@ struct WorkoutDetailView: View {
                 }
             }
             Section("Kardiyo") {
-                Text(workout.cardio.done
-                     ? "\(workout.cardio.minutes) dk · %\(Fmt.kg(workout.cardio.incline)) · \(Fmt.kg(workout.cardio.speed)) km/s"
-                     : "Kaydedilmedi")
+                Text(workout.cardio.done ? workout.cardio.summaryText : "Kaydedilmedi")
                     .foregroundStyle(workout.cardio.done ? Ink.primary : Ink.secondary)
             }
             Section {

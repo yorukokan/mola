@@ -77,7 +77,9 @@ enum Planner {
                 sets.append(SetEntry(kind: .warmup, kg: roundTo(top * 0.5, step: def.step), reps: 10))
             }
             sets.append(SetEntry(kind: .top, kg: top, reps: s.reps))
-            sets.append(SetEntry(kind: .backoff, kg: roundTo(top * 0.9, step: def.step), reps: def.kind.backoffRange.lowerBound))
+            for _ in 0..<max(1, def.backoffSets) {
+                sets.append(SetEntry(kind: .backoff, kg: roundTo(top * 0.9, step: def.step), reps: def.kind.backoffRange.lowerBound))
+            }
             return ExerciseEntry(id: def.id, name: def.name, liftKey: def.liftKey, sets: sets)
         }
         return Workout(routineId: routine.id, routineName: routine.name, plate: routine.plate,
@@ -127,9 +129,9 @@ enum Planner {
 
         if resting && w.restIsCardio == true {
             s.phase = .cardio
-            s.exercise = "Kardiyo"
-            s.setTitle = "Eğimli yürüyüş · \(w.cardio.minutes) dk"
-            s.target = "%\(Fmt.kg(w.cardio.incline)) · \(Fmt.kg(w.cardio.speed)) km/s"
+            s.exercise = w.cardio.kind.shortActivity
+            s.setTitle = "\(w.cardio.kind.title) · \(w.cardio.minutes) dk"
+            s.target = w.cardio.detailText
             s.exerciseIndex = max(0, w.exercises.count - 1)
             return s
         }
