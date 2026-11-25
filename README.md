@@ -1,7 +1,7 @@
 <div align="center">
 
 <!-- Header Banner -->
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0C0E11,45:171A1F,78:3D6FE6,100:E5484D&height=210&section=header&text=MOLA&fontSize=64&fontColor=F2F4F7&fontAlignY=38&desc=iOS%20Strength%20Training%20%26%20Rest%20Timer%20%C2%B7%20Antrenman%20%26%20Dinlenme%20Sayac%C4%B1&descSize=16&descAlignY=62&animation=fadeIn" width="100%" alt="Mola Banner" />
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0C0E11,45:171A1F,78:3D6FE6,100:E5484D&height=210&section=header&text=MOLA&fontSize=64&fontColor=F2F4F7&fontAlignY=38&desc=iOS%20Strength%20Training%20%E2%80%A2%20Rest%20Timer%20%C2%B7%20Antrenman%20ve%20Dinlenme%20Sayac%C4%B1&descSize=16&descAlignY=62&animation=fadeIn" width="100%" alt="Mola Banner" />
 
 <!-- Animated Feature Taglines -->
 <p>
